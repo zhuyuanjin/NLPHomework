@@ -5,15 +5,15 @@ from data.dataloader import dataset
 import data.dataloader as dataloader
 
 parser = argparse.ArgumentParser(description='preprocess.py')
-parser.add_argument('-q_length', type = int,  default=20)
-parser.add_argument('-a_length', type = int,  default=20)
-parser.add_argument('-utter_length', type = int,  default=5)
+parser.add_argument('-q_length', type = int,  default=30)
+parser.add_argument('-a_length', type = int,  default=30)
+parser.add_argument('-utter_length', type = int,  default=4)
 parser.add_argument('-vocab', default=None)
-parser.add_argument('-q_file', default='./data/file_q.txt')
-parser.add_argument('-r_file', default='./data/file_r.txt')
+parser.add_argument('-q_file', default='./data/train/file_q.txt')
+parser.add_argument('-r_file', default='./data/train/file_r.txt')
 parser.add_argument('-save_data', default='./save_data')
 
-parser.add_argument('-vocab_size', type = int, default=50000)
+parser.add_argument('-vocab_size', type = int, default=100000)
 parser.add_argument('-save_vocab', default=None, help="Path to an existing source vocabulary") 
 
 opt = parser.parse_args()
@@ -38,8 +38,14 @@ def makeVocabulary(filename, size, char=False):
                 #     for ch in word:
                 #         vocab.add(ch)
                 # else:
-                vocab.add(word+" ") # why add " " here ?
+                # print(word)
+                if word != 'END':
+                    vocab.add(word+" ") # why add " " here ?
     # originalSize = vocab.size()
+    originalSize = vocab.size()
+    vocab = vocab.prune(size) 
+    print('Created dictionary of size %d (pruned from %d)' %
+          (vocab.size(), originalSize))
     return vocab
 
 
@@ -59,7 +65,7 @@ def initVocabulary(name, dataFile, vocabFile, vocabSize, char=False):
         genWordVocab = makeVocabulary(dataFile, vocabSize, char=char) 
         vocab = genWordVocab
 
-    print()
+    # print()
     return vocab
 
 def saveVocabulary(name, vocab, file):
@@ -74,16 +80,17 @@ def makeData(qFile, rFile, Dicts):
 
     print('Processing %s & %s ...' % (qFile, rFile))
     qF = open(qFile,'r',encoding = 'utf-8')
-    aF = open(rFile,'rb')
+    aF = open(rFile,'r',encoding='utf-8')
 
-    while True: 
+    # while True: 
         # qline = qF.readline()
-        aline = aF.readline()
+        # aline = aF.readline()
+    for aline in aF.readlines():
         # print(len(qline))
 
         # normal end of file
-        if  len(aline) == 0:
-            break
+        # if  len(aline) == 0:
+        #     break
 
         # # source or target does not have same number of lines
         # if len(qline) == 0 or len(aline) == 0:
@@ -100,29 +107,31 @@ def makeData(qFile, rFile, Dicts):
             # continue
 
         # qWords = qline.decode('utf-8').split()
-        aWords = aline.decode('utf-8').split()
+        aWords = aline.split()
         # print(qWords,aWords)
         # print(qWords)
         # 
-        if opt.q_length == 0 or (len(aWords) <= opt.a_length):        
+        # if opt.q_length == 0 or (len(aWords) <= opt.a_length):        
             # qWords = [word+" " for word in qWords]
-            aWords = [word+" " for word in aWords]
+        aWords = [word+" " for word in aWords]
 
-            # qidx += [Dicts.convertToIdx(qWords,
-                                          # dict.UNK_WORD)] 
-            aWords = Dicts.convertToIdx(aWords,dict.UNK_WORD)
-            if len(aWords) < opt.a_length:
-                aWords.extend([0]*(opt.a_length-len(aWords)))
-            else:
-                aWords = aWords[-opt.a_length:]
-            ridx.append(aWords)
+        # qidx += [Dicts.convertToIdx(qWords,
+                                      # dict.UNK_WORD)] 
+        aWords = Dicts.convertToIdx(aWords,dict.UNK_WORD)
+        if len(aWords) < opt.a_length:
+            aWords.extend([0]*(opt.a_length-len(aWords)))
+        else:
+            aWords = aWords[-opt.a_length:]
+        ridx.append(aWords)
             # raw_src += [srcWords]
             # raw_tgt += [tgtWords]
             # sizes += [len(qWords)] 
-        else:
-            ignored += 1
+        # else:
+        #     ignored += 1
 
-        count += 1
+        # count += 1
+    # print(len(ridx))
+    # qF.close()
     qidx = [] 
     qSession=[]
     for line in qF.readlines():
@@ -158,7 +167,7 @@ def makeData(qFile, rFile, Dicts):
     # print(qidx)
         # if count % opt.report_every == 0:
         # print('... %d sentences prepared' % count)
-
+    print(len(qidx),len(ridx))
     qF.close()
     aF.close()
 
@@ -175,10 +184,10 @@ def main():
                                   opt.vocab,
                                   opt.vocab_size)
     # print(dicts.labelToIdx)
-
+    print(dicts.labelToIdx)
     print('Preparing training ...')
     trainset = makeData(opt.q_file, opt.r_file, dicts)
-    # print(trainset[0][0].size(),trainset[0][1].size())
+    print(trainset[0][0].size(),trainset[0][1].size())
 
     trainloader = dataloader.get_loader(trainset, batch_size=4, shuffle=True, num_workers=2)
     for i,a in enumerate(trainloader):
