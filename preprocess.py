@@ -2,10 +2,12 @@ import argparse
 import torch
 import data.dict as dict
 from data.dataloader import dataset
-import data.dataloader
+import data.dataloader as dataloader
+
 parser = argparse.ArgumentParser(description='preprocess.py')
-parser.add_argument('-q_length', type = int,  default=100)
-parser.add_argument('-a_length', type = int,  default=100)
+parser.add_argument('-q_length', type = int,  default=20)
+parser.add_argument('-a_length', type = int,  default=20)
+parser.add_argument('-utter_length', type = int,  default=5)
 parser.add_argument('-vocab', default=None)
 parser.add_argument('-q_file', default='./data/file_q.txt')
 parser.add_argument('-r_file', default='./data/file_r.txt')
@@ -71,60 +73,96 @@ def makeData(qFile, rFile, Dicts):
     count, ignored = 0, 0
 
     print('Processing %s & %s ...' % (qFile, rFile))
-    qF = open(qFile,'rb')
+    qF = open(qFile,'r',encoding = 'utf-8')
     aF = open(rFile,'rb')
 
     while True: 
-        qline = qF.readline()
+        # qline = qF.readline()
         aline = aF.readline()
         # print(len(qline))
 
         # normal end of file
-        if len(qline) == 0 and len(aline) == 0:
+        if  len(aline) == 0:
             break
 
-        # source or target does not have same number of lines
-        if len(qline) == 0 or len(aline) == 0:
-            print('WARNING: source and target do not have the same number of sentences')
-            break
+        # # source or target does not have same number of lines
+        # if len(qline) == 0 or len(aline) == 0:
+        #     print('WARNING: source and target do not have the same number of sentences')
+        #     break
 
-        qline = qline.strip()
+        # qline = qline.strip()
         aline = aline.strip()
         # print(qline,aline)
         # q and/or r are empty
-        if qline == "" or aline == "":
-            print('WARNING: ignoring an empty line ('+str(count+1)+')')
-            ignored += 1
-            continue
+        # if qline == "" or aline == "":
+        #     print('WARNING: ignoring an empty line ('+str(count+1)+')')
+        #     ignored += 1
+            # continue
 
-        qWords = qline.decode('utf-8').split()
+        # qWords = qline.decode('utf-8').split()
         aWords = aline.decode('utf-8').split()
         # print(qWords,aWords)
         # print(qWords)
         # 
-        if opt.q_length == 0 or (len(qWords) <= opt.q_length and len(aWords) <= opt.a_length):        
-            qWords = [word+" " for word in qWords]
+        if opt.q_length == 0 or (len(aWords) <= opt.a_length):        
+            # qWords = [word+" " for word in qWords]
             aWords = [word+" " for word in aWords]
 
-            qidx += [Dicts.convertToIdx(qWords,
-                                          dict.UNK_WORD)] 
-            ridx += [Dicts.convertToIdx(aWords,
-                                          dict.UNK_WORD)]
+            # qidx += [Dicts.convertToIdx(qWords,
+                                          # dict.UNK_WORD)] 
+            aWords = Dicts.convertToIdx(aWords,dict.UNK_WORD)
+            if len(aWords) < opt.a_length:
+                aWords.extend([0]*(opt.a_length-len(aWords)))
+            else:
+                aWords = aWords[-opt.a_length:]
+            ridx.append(aWords)
             # raw_src += [srcWords]
             # raw_tgt += [tgtWords]
-            sizes += [len(qWords)] 
+            # sizes += [len(qWords)] 
         else:
             ignored += 1
 
         count += 1
+    qidx = [] 
+    qSession=[]
+    for line in qF.readlines():
+        qline = line.strip()
+        # print(qline)
+        if qline != 'END':
+            qWords = qline.split()
+            qWords = [word+" " for word in qWords]
+            # print(qWords)
+            qWords = Dicts.convertToIdx(qWords, dict.UNK_WORD)
+            # print(qWords)
+            if len(qWords ) < opt.q_length:
+                # [qline.append(0) for i in range(len(q_length) - len(qline))]
+                qWords.extend([0]*(opt.q_length-len(qWords)))
+            else:
+                qWords = qWords[-opt.q_length:]
+            # print(len(qWords))
+            qSession.append(qWords)
 
+        else:
+            # print(len(qSession))
+            
+            if len(qSession) <= opt.utter_length:
+                qSession.extend((opt.utter_length - len(qSession))*[[0]*opt.q_length])
+                # print(len(qSession))
+            else:
+                qSession = qSession[-opt.utter_length:]
+            # print(len(qSession))
+            qidx.append(qSession)
+            qSession = []
+            # print(qidx)
+            # print(type(qidx))
+    # print(qidx)
         # if count % opt.report_every == 0:
         # print('... %d sentences prepared' % count)
 
     qF.close()
     aF.close()
 
-    return dataset(qidx,ridx) 
+    return dataset(torch.Tensor(qidx),torch.Tensor(ridx)) 
 
 
 
@@ -140,13 +178,13 @@ def main():
 
     print('Preparing training ...')
     trainset = makeData(opt.q_file, opt.r_file, dicts)
-    # print(trainset[1])
+    # print(trainset[0][0].size(),trainset[0][1].size())
 
-    # trainloader = dataloader.get_loader(trainset, batch_size=3, shuffle=True, num_workers=2)
-    # for i,a in enumerate(trainloader):
-    #     x,y = a[0],a[1]
-    #     # print(x,i)
-    #     # print(y,i,dicts.convertToLabel(y))
+    trainloader = dataloader.get_loader(trainset, batch_size=4, shuffle=True, num_workers=2)
+    for i,a in enumerate(trainloader):
+        x,y = a[0],a[1]
+        print(x.size(),i)
+        # print(y,i,dicts.convertToLabel(y))
 
 
     if opt.save_vocab is None:
@@ -155,6 +193,7 @@ def main():
     print('Saving data to \'' + opt.save_data + '.train.pt\'...')
     save_data = {'dicts': dicts,
                  'train': trainset}
+    # print(dicts.labelToIdx)
     torch.save(save_data, opt.save_data) 
 
 
