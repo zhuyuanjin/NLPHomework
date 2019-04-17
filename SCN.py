@@ -78,7 +78,7 @@ class SCN_Net(nn.modules):
             matching_vector = F.tanh(self.fc(pooling_layer))
             matching_vectors.append(matching_vector)
 
-        _, last_hidden = self.final_GRU(torch.stack(matching_vectors, dim=1)) ## stack all of the matching_vectors to make a sequence
+        _, last_hidden = self.final_GRU(torch.stack(matching_vectors, dim=1)) # stack all of the matching_vectors to make a sequence
         last_hidden = torch.squeeze(last_hidden)
         logits = self.fc_final(last_hidden)
         y_pred = F.softmax(logits)
