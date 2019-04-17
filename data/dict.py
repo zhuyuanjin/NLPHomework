@@ -79,7 +79,8 @@ class Dict(object):
 
         vec = [x for x in flatten(vec)]
 
-        return torch.LongTensor(vec)
+        # return torch.LongTensor(vec)
+        return vec
 
     def convertToLabel(self,idx,stop=2):
         labels = []
