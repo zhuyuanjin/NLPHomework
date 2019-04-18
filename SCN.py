@@ -7,10 +7,11 @@ import pickle
 
 
 class SCN_Net(nn.Module):
-    def __init__(self, embedding_matrix, rnn_units, word_embedding_size):
+    def __init__(self, embedding_matrix, rnn_units, word_embedding_size, max_sentence_len):
         super(SCN_Net, self).__init__()
 
         ## Super parameters
+        self.max_sentence_len = max_sentence_len
         self.word_embedding_size = word_embedding_size
         self.rnn_units = rnn_units #200  ## TODO:ckeck the parameter
         self.embedding_matrix = embedding_matrix
@@ -18,9 +19,9 @@ class SCN_Net(nn.Module):
         ##NetWork Parameters
         self.sentence_GRU = nn.GRU(input_size=self.word_embedding_size, hidden_size=self.rnn_units, batch_first=True)
         self.final_GRU = nn.GRU(input_size=50, hidden_size=self.rnn_units, batch_first=True)
-        self.fc = nn.Linear(288, 50)
+        self.fc = nn.Linear(int(self.max_sentence_len / 3) ** 2 * 8, 50)
         self.embedding = nn.Embedding.from_pretrained(self.embedding_matrix)
-        self.conv2d = nn.Conv2d(2, 8, kernel_size=(3, 3))
+        self.conv2d = nn.Conv2d(2, 8, kernel_size=(3, 3), padding=1)
         self.pool2d = nn.MaxPool2d((3, 3), stride=(3, 3))
         self.fc_final = nn.Linear(200, 2) #TODO: check the parameter
 
@@ -34,6 +35,7 @@ class SCN_Net(nn.Module):
         """
 
         # make and initialize the A_matrix
+
         A_matrix = torch.ones([self.rnn_units, self.rnn_units])   #TODO:check the meaning of the A_matrix
         init.xavier_normal(A_matrix)
 
@@ -55,12 +57,15 @@ class SCN_Net(nn.Module):
         for utterance_embeddings in all_utterance_embeddings.permute(1, 0, 2, 3):
             #get the embeddings of each utterance
             utterance_GRU_embeddings, _ = self.sentence_GRU(utterance_embeddings)
+
             #print('utterance_GRU_embeddings', utterance_GRU_embeddings.shape)
 
             #get the matrix1 and matrix2 and the matrix
             matrix1 = torch.matmul(utterance_embeddings, response_embeddings) # the covariance of utterance embedding asn response embedding
+
             matrix2 = torch.einsum('aij, jk->aik', utterance_GRU_embeddings, A_matrix)
             matrix2 = torch.matmul(matrix2, response_GRU_embeddings) #the covariance of response_GRU_embeddings and utterance_GRU_embeddings
+
             matrix = torch.stack([matrix1, matrix2], dim=1) ## TODO: check the parameters
 
             ## Using the convolution net to capture the features of the matrix
