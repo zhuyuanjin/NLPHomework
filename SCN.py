@@ -7,7 +7,7 @@ import pickle
 
 
 class SCN_Net(nn.Module):
-    def __init__(self, embedding_matrix, rnn_units, word_embedding_size, max_sentence_len):
+    def __init__(self, embedding_matrix, rnn_units=200, word_embedding_size=300, max_sentence_len=30):
         super(SCN_Net, self).__init__()
 
         ## Super parameters
@@ -18,6 +18,7 @@ class SCN_Net(nn.Module):
 
         ##NetWork Parameters
         self.sentence_GRU = nn.GRU(input_size=self.word_embedding_size, hidden_size=self.rnn_units, batch_first=True)
+        self.utterance_GRU = nn.GRU(input_size=self.word_embedding_size, hidden_size=self.rnn_units, batch_first=True)
         self.final_GRU = nn.GRU(input_size=50, hidden_size=self.rnn_units, batch_first=True)
         self.fc = nn.Linear(int(self.max_sentence_len / 3) ** 2 * 8, 50)
         self.embedding = nn.Embedding.from_pretrained(self.embedding_matrix)
@@ -61,9 +62,10 @@ class SCN_Net(nn.Module):
             #print('utterance_GRU_embeddings', utterance_GRU_embeddings.shape)
 
             #get the matrix1 and matrix2 and the matrix
+            # print(utterance_embeddings.device,utterance_embeddings.size(),response_embeddings.device,response_embeddings.size())
             matrix1 = torch.matmul(utterance_embeddings, response_embeddings) # the covariance of utterance embedding asn response embedding
 
-            matrix2 = torch.einsum('aij, jk->aik', utterance_GRU_embeddings, A_matrix)
+            matrix2 = torch.einsum('aij,jk->aik', [utterance_GRU_embeddings, A_matrix])
             matrix2 = torch.matmul(matrix2, response_GRU_embeddings) #the covariance of response_GRU_embeddings and utterance_GRU_embeddings
 
             matrix = torch.stack([matrix1, matrix2], dim=1) ## TODO: check the parameters
@@ -80,7 +82,6 @@ class SCN_Net(nn.Module):
         logits = self.fc_final(last_hidden)
         y_pred = logits
         return y_pred
-
 
 
 
